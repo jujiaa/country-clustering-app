@@ -196,7 +196,33 @@ def parse_form_value(raw_value, feature):
         raise ValueError(f"Nilai {feature} tidak boleh negatif.")
 
     return value
+st.success("Prediksi berhasil dilakukan.")
 
+st.subheader("Interpretasi Hasil Clustering")
+
+st.write(
+    f"Negara {country_name} berhasil dikelompokkan "
+    f"ke dalam Cluster {predicted_cluster} berdasarkan "
+    "kemiripan sembilan indikator pembangunan."
+)
+
+st.divider()
+
+st.subheader("Kesimpulan")
+
+st.info(
+    f"""
+    Berdasarkan hasil analisis menggunakan algoritma K-Means,
+    negara {country_name} termasuk dalam Cluster {predicted_cluster}.
+
+    Hasil ini menunjukkan bahwa negara tersebut memiliki
+    kemiripan pola karakteristik sosial, ekonomi, dan kesehatan
+    dengan negara-negara lain dalam kelompok yang sama.
+
+    Pengelompokan ini dapat digunakan untuk memahami pola
+    pembangunan dan membandingkan karakteristik antarnegara.
+    """
+)
 
 # ============================================================
 # 4. ANTARMUKA APLIKASI
