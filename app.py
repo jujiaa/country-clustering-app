@@ -95,3 +95,18 @@ with tab1:
                     "Nilai tidak boleh negatif untuk fitur: "
                     + ", ".join(negative_features)
                 )
+
+            row = pd.DataFrame([[values[f] for f in FEATURES]], columns=FEATURES)
+            transformed = transformer.transform(row)
+            scaled = scaler.transform(transformed)
+            prediction = int(model.predict(scaled)[0])
+            st.metric("Hasil prediksi", f"Cluster {prediction}")
+            st.info(
+                "Nomor cluster adalah label matematis, bukan peringkat negara. "
+                "Interpretasi karakteristik cluster perlu dilihat dari profil "
+                "rata-rata setiap cluster."
+            )
+        except ValueError as exc:
+            st.error(f"Input belum valid: {exc}")
+        except Exception as exc:
+            st.error(f"Prediksi gagal diproses: {exc}")
