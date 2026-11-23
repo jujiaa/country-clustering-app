@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,11 +5,10 @@ import joblib
 from pathlib import Path
 
 # =====================================================
-# 1. KONFIGURASI APLIKASI
+# 1. KONFIGURASI
 # =====================================================
-
 st.set_page_config(
-    page_title="Country Clustering",
+    page_title="Country Development Clustering",
     page_icon="🌍",
     layout="wide"
 )
@@ -18,63 +16,45 @@ st.set_page_config(
 MODEL_PATH = Path(__file__).parent / "country_clustering_model.joblib"
 
 FEATURES = [
-    "child_mort",
-    "exports",
-    "health",
-    "imports",
-    "income",
-    "inflation",
-    "life_expec",
-    "total_fer",
-    "gdpp"
+    "child_mort", "exports", "health", "imports", "income",
+    "inflation", "life_expec", "total_fer", "gdpp"
 ]
 
 # =====================================================
 # 2. JUDUL APLIKASI
 # =====================================================
-
 st.title("🌍 Country Development Clustering")
-
 st.write(
-    "Aplikasi pengelompokan negara berdasarkan indikator "
+    "Aplikasi pengelompokan negara berdasarkan sembilan indikator "
     "sosial, ekonomi, dan kesehatan menggunakan algoritma K-Means."
 )
-
-st.markdown("---")
+st.divider()
 
 # =====================================================
-# 3. MEMUAT MODEL MACHINE LEARNING
+# 3. MEMUAT MODEL
 # =====================================================
-
 @st.cache_resource
 def load_bundle():
-
     if not MODEL_PATH.exists():
         raise FileNotFoundError(
-            "File country_clustering_model.joblib tidak ditemukan. "
-            "Pastikan file berada dalam folder yang sama dengan app.py."
+            f"File model tidak ditemukan: {MODEL_PATH.name}. "
+            "Letakkan file model di folder yang sama dengan app.py."
         )
 
     bundle = joblib.load(MODEL_PATH)
 
-    required = {
-        "transformer",
-        "scaler",
-        "model",
-        "features",
-        "metrics"
-    }
-
-    missing = required.difference(bundle.keys())
-
-    if missing:
+    required_keys = {"transformer", "scaler", "model", "features", "metrics"}
+    missing_keys = required_keys.difference(bundle.keys())
+    if missing_keys:
         raise ValueError(
-            f"Komponen model tidak lengkap: {sorted(missing)}"
+            f"Bundle model tidak memiliki komponen: {sorted(missing_keys)}"
         )
 
-    if list(bundle["features"]) != FEATURES:
+    saved_features = list(bundle["features"])
+    if saved_features != FEATURES:
         raise ValueError(
-            "Urutan fitur model tidak sesuai dengan aplikasi."
+            "Urutan/nama fitur pada bundle model tidak sama dengan fitur aplikasi. "
+            f"Fitur model: {saved_features}"
         )
 
     return bundle
@@ -82,26 +62,22 @@ def load_bundle():
 
 try:
     bundle = load_bundle()
-
 except Exception as exc:
-    st.error(f"Gagal memuat model: {exc}")
+    st.error(f"Model gagal dimuat: {exc}")
     st.stop()
-
 
 transformer = bundle["transformer"]
 scaler = bundle["scaler"]
 model = bundle["model"]
 
 st.success(
-    f"Model berhasil dimuat | "
-    f"Algoritma: K-Means | "
+    f"Model berhasil dimuat | K-Means | "
     f"Jumlah cluster: {model.n_clusters}"
 )
 
 # =====================================================
-# 4. MEMBUAT TAB APLIKASI
+# 4. TAB APLIKASI
 # =====================================================
-
 tab1, tab2, tab3 = st.tabs([
     "Prediksi Satu Negara",
     "Prediksi Banyak Negara (CSV)",
@@ -111,22 +87,25 @@ tab1, tab2, tab3 = st.tabs([
 # =====================================================
 # 5. PREDIKSI SATU NEGARA
 # =====================================================
-
 with tab1:
-
     st.subheader("Prediksi Cluster Negara")
-
     st.write(
-        "Masukkan sembilan indikator negara untuk "
-        "mengetahui kelompok cluster berdasarkan model K-Means."
-    )
-
-    st.caption(
-        "Gunakan angka sesuai satuan dataset. "
-        "Nilai inflation boleh negatif."
+        "Masukkan nama negara dan sembilan indikatornya. "
+        "Nama negara akan ditampilkan bersama hasil prediksi."
     )
 
     with st.form("single_country_form"):
+        country_name = st.text_input(
+            "Nama Negara",
+            placeholder="Contoh: Indonesia",
+            help="Nama ini hanya sebagai identitas tampilan; model K-Means memprediksi cluster dari sembilan indikator."
+        )
+
+        st.markdown("**Indikator negara**")
+        st.caption(
+            "Gunakan satuan dan skala yang sama dengan dataset training. "
+            "Nilai inflation boleh negatif."
+        )
 
         input_specs = [
             ("child_mort", "Child Mortality"),
@@ -141,326 +120,250 @@ with tab1:
         ]
 
         columns = st.columns(3)
-
         raw_values = {}
 
         for i, (feature, label) in enumerate(input_specs):
-
             with columns[i % 3]:
-
                 raw_values[feature] = st.text_input(
                     label,
-                    value="0",
-                    key=f"single_{feature}",
-                    help="Masukkan angka. Gunakan titik untuk desimal."
+                    value="",
+                    placeholder="Masukkan angka",
+                    key=f"single_{feature}"
                 )
 
         submitted = st.form_submit_button(
             "Prediksi Cluster",
-            type="primary"
+            type="primary",
+            use_container_width=True
         )
 
     if submitted:
-
         try:
+            if not country_name.strip():
+                raise ValueError("Nama negara wajib diisi.")
+
+            empty_fields = [
+                feature for feature in FEATURES
+                if not raw_values[feature].strip()
+            ]
+            if empty_fields:
+                raise ValueError(
+                    "Lengkapi seluruh indikator. Belum diisi: "
+                    + ", ".join(empty_fields)
+                )
 
             values = {
                 feature: float(raw_values[feature].strip())
                 for feature in FEATURES
             }
 
-            if not all(
-                np.isfinite(value)
-                for value in values.values()
-            ):
-                raise ValueError(
-                    "Semua input harus berupa angka yang valid."
-                )
+            if not all(np.isfinite(v) for v in values.values()):
+                raise ValueError("Semua indikator harus berupa angka yang valid.")
 
             negative_features = [
-                feature
-                for feature, value in values.items()
+                feature for feature, value in values.items()
                 if feature != "inflation" and value < 0
             ]
-
             if negative_features:
-
                 raise ValueError(
-                    "Nilai tidak boleh negatif pada fitur: "
+                    "Nilai tidak boleh negatif pada indikator: "
                     + ", ".join(negative_features)
                 )
 
             input_data = pd.DataFrame(
-                [[values[f] for f in FEATURES]],
+                [[values[feature] for feature in FEATURES]],
                 columns=FEATURES
             )
 
-            # Preprocessing menggunakan objek hasil training
-            transformed = transformer.transform(input_data)
+            # Gunakan preprocessing yang sama dengan proses training.
+            transformed_data = transformer.transform(input_data)
+            scaled_data = scaler.transform(transformed_data)
+            predicted_cluster = int(model.predict(scaled_data)[0])
 
-            scaled = scaler.transform(transformed)
-
-            # Prediksi cluster
-            prediction = int(
-                model.predict(scaled)[0]
-            )
-
-            st.markdown("---")
-
+            st.divider()
             st.subheader("Hasil Prediksi")
 
-            st.metric(
-                label="Cluster Negara",
-                value=f"Cluster {prediction}"
-            )
+            result_col1, result_col2 = st.columns(2)
+            result_col1.metric("Negara", country_name.strip())
+            result_col2.metric("Cluster Negara", f"Cluster {predicted_cluster}")
 
             st.success(
-                f"Data negara berhasil dikelompokkan "
-                f"ke dalam Cluster {prediction}."
+                f"Negara {country_name.strip()} berhasil dikelompokkan "
+                f"ke dalam Cluster {predicted_cluster}."
             )
 
             st.info(
-                "Nomor cluster merupakan label kategori, "
-                "bukan peringkat kesejahteraan negara. "
-                "Interpretasi harus mengacu pada karakteristik "
-                "rata-rata setiap cluster."
+                "Nomor cluster merupakan label kategori, bukan peringkat "
+                "kesejahteraan negara. Untuk menjelaskan apakah cluster "
+                "termasuk kelompok negara dengan tingkat pembangunan tinggi "
+                "atau rendah, gunakan profil/rata-rata indikator setiap cluster "
+                "dari hasil analisis clustering."
+            )
+
+            result_table = pd.DataFrame({
+                "Negara": [country_name.strip()],
+                "Cluster": [predicted_cluster],
+                **{feature: [values[feature]] for feature in FEATURES}
+            })
+            st.dataframe(result_table, use_container_width=True)
+
+            result_csv = result_table.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Unduh hasil prediksi negara",
+                data=result_csv,
+                file_name="hasil_prediksi_negara.csv",
+                mime="text/csv"
             )
 
         except ValueError as exc:
-
             st.error(f"Input tidak valid: {exc}")
-
         except Exception as exc:
-
-            st.error(f"Prediksi gagal: {exc}")
-
+            st.error(f"Prediksi gagal diproses: {exc}")
 
 # =====================================================
-# 6. PREDIKSI BANYAK NEGARA MENGGUNAKAN CSV
+# 6. PREDIKSI BANYAK NEGARA DENGAN CSV
 # =====================================================
-
 with tab2:
-
     st.subheader("Prediksi Banyak Negara")
-
     st.write(
-        "Unggah file CSV yang berisi sembilan indikator "
-        "negara untuk melakukan clustering secara bersamaan."
+        "Unggah CSV yang berisi sembilan kolom indikator. "
+        "Sertakan kolom `country` agar nama negara tampil pada hasil."
+    )
+    st.code(", ".join(["country"] + FEATURES))
+
+    uploaded_file = st.file_uploader(
+        "Pilih file CSV",
+        type=["csv"],
+        key="country_csv"
     )
 
-    st.caption("Kolom fitur yang wajib tersedia:")
-
-    st.code(", ".join(FEATURES))
-
-    st.caption(
-        "Kolom country boleh disertakan untuk mempertahankan "
-        "identitas negara."
-    )
-
-    uploaded = st.file_uploader(
-        "Upload Dataset CSV",
-        type=["csv"]
-    )
-
-    if uploaded is not None:
-
+    if uploaded_file is not None:
         try:
+            input_df = pd.read_csv(uploaded_file)
 
-            input_df = pd.read_csv(uploaded)
-
-            missing = [
-                feature
-                for feature in FEATURES
+            missing_features = [
+                feature for feature in FEATURES
                 if feature not in input_df.columns
             ]
 
-            if missing:
-
+            if missing_features:
                 st.error(
-                    f"Kolom berikut belum tersedia: {missing}"
+                    "Kolom indikator berikut tidak ditemukan: "
+                    + ", ".join(missing_features)
                 )
-
             else:
-
                 model_input = input_df[FEATURES].copy()
 
                 for col in FEATURES:
-
                     model_input[col] = pd.to_numeric(
-                        model_input[col],
-                        errors="coerce"
+                        model_input[col], errors="coerce"
                     )
 
                 if model_input.isna().any().any():
-
-                    bad_cols = model_input.columns[
+                    bad_columns = model_input.columns[
                         model_input.isna().any()
                     ].tolist()
-
                     st.error(
-                        "Terdapat nilai kosong atau non-numerik "
-                        f"pada kolom: {bad_cols}"
+                        "Ada nilai kosong atau non-numerik pada kolom: "
+                        + ", ".join(bad_columns)
                     )
-
                 elif not np.isfinite(
                     model_input.to_numpy(dtype=float)
                 ).all():
-
-                    st.error(
-                        "CSV mengandung nilai yang tidak valid."
-                    )
-
+                    st.error("CSV mengandung nilai tak hingga atau tidak valid.")
                 else:
-
                     nonnegative_features = [
-                        f for f in FEATURES
-                        if f != "inflation"
+                        f for f in FEATURES if f != "inflation"
                     ]
-
-                    negative_cols = [
+                    negative_columns = [
                         f for f in nonnegative_features
                         if (model_input[f] < 0).any()
                     ]
 
-                    if negative_cols:
-
+                    if negative_columns:
                         st.error(
-                            "Nilai negatif tidak diperbolehkan "
-                            f"pada kolom: {negative_cols}"
+                            "Nilai negatif tidak diperbolehkan pada kolom: "
+                            + ", ".join(negative_columns)
                         )
-
                     else:
+                        transformed_data = transformer.transform(model_input)
+                        scaled_data = scaler.transform(transformed_data)
+                        predictions = model.predict(scaled_data).astype(int)
 
-                        # Preprocessing data CSV
-                        transformed = transformer.transform(
-                            model_input
-                        )
-
-                        scaled = scaler.transform(
-                            transformed
-                        )
-
-                        # Prediksi seluruh data
-                        predictions = model.predict(
-                            scaled
-                        ).astype(int)
-
-                        result = input_df.copy()
-
-                        result["cluster"] = predictions
+                        result_df = input_df.copy()
+                        if "country" not in result_df.columns:
+                            result_df.insert(
+                                0,
+                                "country",
+                                [f"Negara/baris {i + 1}" for i in range(len(result_df))]
+                            )
+                        result_df["cluster"] = predictions
 
                         st.success(
-                            f"Prediksi berhasil untuk "
-                            f"{len(result)} negara."
+                            f"Prediksi berhasil untuk {len(result_df)} data negara."
+                        )
+                        st.dataframe(result_df, use_container_width=True)
+
+                        st.subheader("Distribusi Anggota Cluster")
+                        st.bar_chart(
+                            result_df["cluster"].value_counts().sort_index()
                         )
 
-                        st.subheader("Hasil Clustering")
-
-                        st.dataframe(
-                            result,
-                            use_container_width=True
-                        )
-
-                        # Menghitung jumlah anggota setiap cluster
-                        st.subheader(
-                            "Distribusi Anggota Cluster"
-                        )
-
-                        cluster_counts = (
-                            result["cluster"]
-                            .value_counts()
-                            .sort_index()
-                        )
-
-                        st.bar_chart(cluster_counts)
-
-                        # Download hasil
-                        csv_bytes = result.to_csv(
-                            index=False
-                        ).encode("utf-8")
-
+                        csv_data = result_df.to_csv(index=False).encode("utf-8")
                         st.download_button(
-                            label="Download Hasil Clustering",
-                            data=csv_bytes,
+                            "Unduh Hasil Clustering CSV",
+                            data=csv_data,
                             file_name="hasil_clustering_negara.csv",
                             mime="text/csv"
                         )
 
         except Exception as exc:
-
-            st.error(
-                f"File CSV gagal diproses: {exc}"
-            )
-
+            st.error(f"File CSV gagal diproses: {exc}")
 
 # =====================================================
-# 7. INFORMASI DAN EVALUASI MODEL
+# 7. INFORMASI MODEL
 # =====================================================
-
 with tab3:
-
-    st.subheader("Informasi Model Clustering")
-
-    st.write(
-        "Model yang digunakan adalah K-Means dengan "
-        "preprocessing PowerTransformer dan StandardScaler."
-    )
+    st.subheader("Informasi dan Evaluasi Model")
 
     metrics = bundle["metrics"]
+    metric_columns = st.columns(3)
 
-    col1, col2, col3 = st.columns(3)
+    metric_definitions = [
+        ("Silhouette Score", "silhouette"),
+        ("Davies-Bouldin Index", "davies_bouldin"),
+        ("Calinski-Harabasz Score", "calinski_harabasz")
+    ]
 
-    col1.metric(
-        "Silhouette Score",
-        f"{metrics['silhouette']:.4f}"
-    )
+    for col, (label, key) in zip(metric_columns, metric_definitions):
+        if key in metrics:
+            col.metric(label, f"{float(metrics[key]):.4f}")
+        else:
+            col.metric(label, "Tidak tersedia")
 
-    col2.metric(
-        "Davies-Bouldin Index",
-        f"{metrics['davies_bouldin']:.4f}"
-    )
-
-    col3.metric(
-        "Calinski-Harabasz Score",
-        f"{metrics['calinski_harabasz']:.4f}"
-    )
-
-    st.markdown("---")
-
-    st.subheader("Variabel yang Digunakan")
-
+    st.divider()
+    st.markdown("**Fitur yang digunakan**")
     st.write(FEATURES)
 
-    st.subheader("Metode Preprocessing")
-
-    st.write("""
-    1. PowerTransformer menggunakan metode Yeo-Johnson.
-    2. StandardScaler untuk menyamakan skala fitur.
-    3. K-Means untuk melakukan pengelompokan negara.
-    """)
-
-    st.subheader("Algoritma")
-
-    st.write("K-Means Clustering")
-
-    st.markdown("---")
-
-    st.warning(
-        "Hasil clustering merupakan alat bantu analisis "
-        "untuk mengidentifikasi kelompok negara dengan "
-        "karakteristik yang relatif serupa. "
-        "Nomor cluster bukan peringkat negara."
+    st.markdown("**Tahapan preprocessing**")
+    st.write(
+        "PowerTransformer metode Yeo-Johnson, kemudian StandardScaler. "
+        "Objek preprocessing yang digunakan adalah objek hasil training."
     )
 
+    st.markdown("**Algoritma clustering**")
+    st.write("K-Means")
+
+    st.warning(
+        "Cluster merupakan label hasil pengelompokan. Penamaan karakteristik "
+        "cluster harus didasarkan pada tabel profil cluster dari tahap analisis."
+    )
 
 # =====================================================
-# 8. FOOTER APLIKASI
+# 8. FOOTER
 # =====================================================
-
-st.markdown("---")
-
+st.divider()
 st.caption(
-    "Country Development Clustering | "
-    "Final Project Data Science | "
+    "Country Development Clustering | Final Project Data Science | "
     "CRISP-DM - Deployment"
 )
