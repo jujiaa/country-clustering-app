@@ -262,10 +262,19 @@ with tab_single:
                     f"{predicted_cluster}** berdasarkan sembilan indikator yang "
                     "dimasukkan."
                 )
-                st.warning(
-                    "Nomor cluster adalah label kelompok, bukan peringkat "
-                    "negara maju atau berkembang. Makna cluster harus ditentukan "
-                    "berdasarkan profil rata-rata cluster pada hasil analisis notebook."
+                st.info(
+    """
+    **Interpretasi Hasil Clustering**
+
+    Hasil prediksi mengelompokkan negara berdasarkan kemiripan
+    sembilan indikator pembangunan yang mencakup aspek sosial,
+    ekonomi, dan kesehatan.
+
+    Pengelompokan ini membantu memberikan gambaran mengenai
+    pola dan karakteristik pembangunan negara berdasarkan
+    hasil analisis algoritma K-Means.
+    """
+)
                 )
 
                 output = input_data.copy()
