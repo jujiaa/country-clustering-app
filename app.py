@@ -346,10 +346,10 @@ with tab_single:
             st.subheader("Hasil Prediksi")
 
             country_name = country_name.strip()
-            col0, col1, col2 = st.columns(3)
+            col0, col1 = st.columns(2)
             col0.metric("Negara", country_name if country_name else "-")
             col1.metric("Cluster Negara", f"Cluster {predicted_cluster}")
-            col2.metric(
+            st.metric(
                 "Kategori Pembangunan",
                 cluster_labels[predicted_cluster]
             )
