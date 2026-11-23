@@ -94,3 +94,4 @@ with tab1:
                 raise ValueError(
                     "Nilai tidak boleh negatif untuk fitur: "
                     + ", ".join(negative_features)
+                )
