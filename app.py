@@ -275,8 +275,6 @@ with tab_single:
     hasil analisis algoritma K-Means.
     """
 )
-                )
-
                 output = input_data.copy()
                 output.insert(0, "country", country_name.strip())
                 output["cluster"] = predicted_cluster
