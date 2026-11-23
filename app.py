@@ -133,6 +133,7 @@ metrics = bundle["metrics"]
 cluster_profile = bundle["cluster_profile"]
 cluster_labels = bundle["cluster_labels"]
 cluster_interpretation = bundle["cluster_interpretation"]
+reference_data = bundle.get("reference_data")  # tabel negara asli (opsional)
 
 st.success(
     f"Model berhasil dimuat | K-Means | "
@@ -177,6 +178,62 @@ def predict_clusters(dataframe):
     transformed = transformer.transform(clean)
     scaled = scaler.transform(transformed)
     return model.predict(scaled).astype(int)
+
+
+@st.cache_data
+def get_reference_scaled(_reference, _version):
+    """Skala-kan data referensi sekali saja dengan transformer & scaler training."""
+    ref_features = _reference[FEATURES].astype(float)
+    return scaler.transform(transformer.transform(ref_features))
+
+
+def find_similar_countries(dataframe, top_k=3):
+    """Cari negara pada dataset penelitian yang paling mirip dengan input
+    (jarak Euclidean pada ruang fitur yang sudah ditransformasi & diskalakan)."""
+    if reference_data is None:
+        return None
+
+    clean = validate_input(dataframe)
+    x_scaled = scaler.transform(transformer.transform(clean))
+    ref_scaled = get_reference_scaled(reference_data, len(reference_data))
+
+    distances = np.linalg.norm(ref_scaled - x_scaled[0], axis=1)
+    idx = np.argsort(distances)[:top_k]
+
+    result = reference_data.iloc[idx].copy()
+    result.insert(1, "jarak", distances[idx])
+    return result.reset_index(drop=True)
+
+
+def show_similar_countries(input_df):
+    st.subheader("Negara yang Sesuai dengan Indikator")
+    similar = find_similar_countries(input_df, top_k=3)
+
+    if similar is None:
+        st.warning(
+            "Data referensi negara belum ada di model bundle. Jalankan sel "
+            "tambahan di Colab (reference_data) lalu unggah ulang file joblib."
+        )
+        return
+
+    best = similar.iloc[0]
+    if best["jarak"] < 0.05:
+        st.success(f"Indikator ini cocok dengan negara: **{best['country']}**")
+    else:
+        st.info(
+            f"Negara paling mirip dalam dataset: **{best['country']}** "
+            f"(jarak {best['jarak']:.3f})"
+        )
+
+    show = similar.rename(columns={
+        "country": "Negara", "jarak": "Jarak (makin kecil makin mirip)",
+        "cluster": "Cluster", **FEATURE_LABELS
+    })
+    st.dataframe(show.round(3), hide_index=True, use_container_width=True)
+    st.caption(
+        "Model K-Means hanya menghasilkan cluster. Nama negara dicari dengan "
+        "membandingkan input terhadap data negara pada dataset penelitian."
+    )
 
 
 def show_cluster_interpretation(cluster_id):
@@ -289,6 +346,8 @@ with tab_single:
                 cluster_labels[predicted_cluster]
             )
 
+            show_similar_countries(input_df)
+
             st.subheader("Kesimpulan dan Interpretasi")
             show_cluster_interpretation(predicted_cluster)
 
@@ -302,6 +361,9 @@ with tab_single:
                 1, "kategori_pembangunan",
                 cluster_labels[predicted_cluster]
             )
+            similar_df = find_similar_countries(input_df, top_k=1)
+            if similar_df is not None:
+                result_df.insert(0, "negara_paling_mirip", similar_df.loc[0, "country"])
             csv_data = result_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "Unduh hasil prediksi",
