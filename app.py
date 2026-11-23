@@ -94,3 +94,4 @@ with tab1:
         )
 
 with tab2:
+    st.write("Isi tab 2")
