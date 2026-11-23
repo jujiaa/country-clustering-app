@@ -300,6 +300,12 @@ with tab_single:
             "Gunakan titik atau koma untuk desimal; inflation boleh negatif."
         )
 
+        country_name = st.text_input(
+            "Nama Negara (opsional)",
+            placeholder="Contoh: Japan",
+            key="input_country"
+        )
+
         columns = st.columns(3)
         raw_values = {}
 
@@ -339,14 +345,18 @@ with tab_single:
             st.divider()
             st.subheader("Hasil Prediksi")
 
-            col1, col2 = st.columns(2)
+            country_name = country_name.strip()
+            col0, col1, col2 = st.columns(3)
+            col0.metric("Negara", country_name if country_name else "-")
             col1.metric("Cluster Negara", f"Cluster {predicted_cluster}")
             col2.metric(
                 "Kategori Pembangunan",
                 cluster_labels[predicted_cluster]
             )
 
-            show_similar_countries(input_df)
+            # Jika nama negara tidak diisi, cari negara paling mirip
+            if not country_name:
+                show_similar_countries(input_df)
 
             st.subheader("Kesimpulan dan Interpretasi")
             show_cluster_interpretation(predicted_cluster)
@@ -361,9 +371,14 @@ with tab_single:
                 1, "kategori_pembangunan",
                 cluster_labels[predicted_cluster]
             )
-            similar_df = find_similar_countries(input_df, top_k=1)
-            if similar_df is not None:
-                result_df.insert(0, "negara_paling_mirip", similar_df.loc[0, "country"])
+            if country_name:
+                result_df.insert(0, "country", country_name)
+            else:
+                similar_df = find_similar_countries(input_df, top_k=1)
+                if similar_df is not None:
+                    result_df.insert(
+                        0, "negara_paling_mirip", similar_df.loc[0, "country"]
+                    )
             csv_data = result_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "Unduh hasil prediksi",
