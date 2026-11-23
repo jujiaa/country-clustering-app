@@ -22,15 +22,15 @@ FEATURES = [
 ]
 
 FEATURE_LABELS = {
-    "child_mort": "Child Mortality",
+    "child_mort": "Child Mortality (per 1.000 kelahiran)",
     "exports": "Exports (% GDP)",
     "health": "Health (% GDP)",
     "imports": "Imports (% GDP)",
-    "income": "Income per Capita",
+    "income": "Income per Capita (US$)",
     "inflation": "Inflation (%)",
-    "life_expec": "Life Expectancy",
-    "total_fer": "Total Fertility",
-    "gdpp": "GDP per Capita"
+    "life_expec": "Life Expectancy (tahun)",
+    "total_fer": "Total Fertility (anak per perempuan)",
+    "gdpp": "GDP per Capita (US$)"
 }
 
 # ============================================================
@@ -229,14 +229,109 @@ def show_similar_countries(input_df):
         "country": "Negara", "jarak": "Jarak (makin kecil makin mirip)",
         "cluster": "Cluster", **FEATURE_LABELS
     })
-    st.dataframe(show.round(3), hide_index=True, use_container_width=True)
+    st.dataframe(show.round(2), hide_index=True, use_container_width=True)
     st.caption(
         "Model K-Means hanya menghasilkan cluster. Nama negara dicari dengan "
         "membandingkan input terhadap data negara pada dataset penelitian."
     )
 
 
-def show_cluster_interpretation(cluster_id):
+def get_scaled(clean):
+    return scaler.transform(transformer.transform(clean))
+
+
+def check_input_ranges(dataframe):
+    """Peringatan jika input di luar rentang dataset atau tidak konsisten."""
+    row = validate_input(dataframe).iloc[0]
+    issues = []
+
+    if reference_data is not None:
+        for f in FEATURES:
+            lo, hi = float(reference_data[f].min()), float(reference_data[f].max())
+            if row[f] < lo or row[f] > hi:
+                issues.append(
+                    f"{FEATURE_LABELS[f]} = {row[f]:g} berada di luar rentang "
+                    f"dataset penelitian ({lo:g} - {hi:g})."
+                )
+    else:
+        if not 30 <= row["life_expec"] <= 100:
+            issues.append("Life Expectancy di luar rentang wajar (30-100 tahun).")
+        if row["child_mort"] > 300:
+            issues.append("Child Mortality terlalu tinggi (>300 per 1.000).")
+        if row["exports"] > 250 or row["imports"] > 250:
+            issues.append("Exports/Imports tidak wajar (>250% GDP).")
+        if row["health"] > 30:
+            issues.append("Health (% GDP) tidak wajar (>30%).")
+
+    if row["income"] > 0 and row["gdpp"] > 0:
+        ratio = row["gdpp"] / row["income"]
+        if ratio < 0.05 or ratio > 20:
+            issues.append(
+                "GDP per Capita dan Income per Capita sangat tidak sebanding "
+                f"(rasio {ratio:.2f}). Periksa kembali kedua angka tersebut."
+            )
+
+    if issues:
+        st.warning(
+            "**Periksa kembali input Anda:**\n\n"
+            + "\n".join(f"- {i}" for i in issues)
+        )
+
+
+def show_cluster_confidence(dataframe):
+    """Kedekatan relatif input ke setiap centroid (bukan probabilitas)."""
+    scaled = get_scaled(validate_input(dataframe))
+    dist = model.transform(scaled)[0]
+    inv = 1.0 / np.maximum(dist, 1e-9)
+    share = inv / inv.sum()
+
+    st.markdown("**Kedekatan ke setiap cluster**")
+    cols = st.columns(len(share))
+    for k, (col, sh) in enumerate(zip(cols, share)):
+        col.metric(f"Cluster {k} - {cluster_labels[k]}", f"{sh * 100:.0f}%")
+
+    if share.max() < 0.60:
+        st.warning(
+            "Input berada dekat batas antar cluster, sehingga hasil prediksi "
+            "kurang tegas."
+        )
+    else:
+        st.caption("Input berada cukup jelas di salah satu cluster.")
+    st.caption(
+        "Persentase adalah kedekatan relatif terhadap pusat cluster "
+        "(berbasis jarak), bukan probabilitas statistik."
+    )
+
+
+def check_country_consistency(country_name, dataframe):
+    """Bandingkan nama negara yang diketik dengan data negara tersebut."""
+    if not country_name or reference_data is None:
+        return
+
+    mask = reference_data["country"].str.lower() == country_name.lower()
+    if not mask.any():
+        st.caption(
+            f"Nama negara '{country_name}' tidak ada di dataset penelitian, "
+            "sehingga kesesuaian indikator tidak dapat diperiksa."
+        )
+        return
+
+    pos = int(np.where(mask.to_numpy())[0][0])
+    x_scaled = get_scaled(validate_input(dataframe))
+    ref_scaled = get_reference_scaled(reference_data, len(reference_data))
+    distances = np.linalg.norm(ref_scaled - x_scaled[0], axis=1)
+    rank = int((distances < distances[pos]).sum()) + 1
+
+    if rank > 5:
+        st.warning(
+            f"Indikator yang dimasukkan kurang mirip dengan data "
+            f"{reference_data.iloc[pos]['country']} pada dataset penelitian "
+            f"(kemiripan peringkat ke-{rank} dari {len(distances)}). "
+            "Pastikan nama negara dan angka indikator sudah sesuai."
+        )
+
+
+def show_cluster_interpretation(cluster_id, input_df=None):
     cluster_id = int(cluster_id)
     category = cluster_labels[cluster_id]
     interpretation = cluster_interpretation[cluster_id]
@@ -257,14 +352,16 @@ def show_cluster_interpretation(cluster_id):
     if description:
         st.write(description)
 
-    st.markdown("**Dasar interpretasi: profil rata-rata cluster penelitian**")
-    profile_row = cluster_profile.loc[cluster_id, FEATURES]
-    profile_table = pd.DataFrame({
-        "Indikator": [FEATURE_LABELS[f] for f in FEATURES],
-        "Rata-rata cluster": [
-            float(profile_row[f]) for f in FEATURES
+    st.markdown("**Dasar interpretasi: posisi input terhadap profil cluster**")
+    table = {"Indikator": [FEATURE_LABELS[f] for f in FEATURES]}
+    if input_df is not None:
+        table["Nilai input"] = [float(input_df.iloc[0][f]) for f in FEATURES]
+    for k in sorted(cluster_labels):
+        mark = " (hasil prediksi)" if k == cluster_id else ""
+        table[f"Rata-rata Cluster {k}{mark}"] = [
+            float(cluster_profile.loc[k, f]) for f in FEATURES
         ]
-    })
+    profile_table = pd.DataFrame(table).round(2)
     st.dataframe(profile_table, hide_index=True, use_container_width=True)
 
     st.caption(
@@ -354,12 +451,16 @@ with tab_single:
                 cluster_labels[predicted_cluster]
             )
 
+            check_input_ranges(input_df)
+            check_country_consistency(country_name, input_df)
+            show_cluster_confidence(input_df)
+
             # Jika nama negara tidak diisi, cari negara paling mirip
             if not country_name:
                 show_similar_countries(input_df)
 
             st.subheader("Kesimpulan dan Interpretasi")
-            show_cluster_interpretation(predicted_cluster)
+            show_cluster_interpretation(predicted_cluster, input_df)
 
             st.markdown("**Data indikator yang dimasukkan**")
             display_input = input_df.rename(columns=FEATURE_LABELS)
